@@ -5,6 +5,8 @@ import streamlit as st
 from PIL import Image, ImageDraw
 import tempfile
 from streamlit_drawable_canvas import st_canvas
+import base64
+from io import BytesIO
 
 # Configurazione della pagina
 st.set_page_config(
@@ -37,15 +39,6 @@ if 'images' not in st.session_state:
 if 'temp_dir' not in st.session_state:
     st.session_state.temp_dir = tempfile.TemporaryDirectory()
 
-def load_images(folder):
-    """Carica tutte le immagini dalla cartella specificata"""
-    valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp')
-    images = []
-    for f in os.listdir(folder):
-        if f.lower().endswith(valid_extensions) and not (f.endswith('_marked.jpg') or f.endswith('_annotated.jpg')):
-            images.append(os.path.join(folder, f))
-    return images
-
 def draw_boxes(image, bboxes):
     """Disegna i bounding box sull'immagine"""
     draw = ImageDraw.Draw(image)
@@ -53,34 +46,44 @@ def draw_boxes(image, bboxes):
         x1, y1, x2, y2 = box['coords']
         cls = box['class']
         color = COLORS.get(cls, '#FF0000')
-        
-        # Disegna il rettangolo
         draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
-        
-        # Aggiungi l'etichetta
         label = f"{cls}"
         text_bbox = draw.textbbox((x1, y1), label)
         draw.rectangle(text_bbox, fill=color)
         draw.text((x1, y1), label, fill='white')
-    
     return image
 
-def save_annotated_image(image_path, bboxes, output_dir):
-    """Salva l'immagine con le annotazioni"""
+def save_annotated_image(image_data, bboxes, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    
-    # Carica l'immagine originale
-    img = Image.open(image_path)
+    from io import BytesIO
+    img = Image.open(BytesIO(image_data['content']))
     img = draw_boxes(img, bboxes)
-    
-    # Crea il nome del file di output
-    base_name = os.path.splitext(os.path.basename(image_path))[0]
+    base_name = os.path.splitext(image_data['name'])[0]
     output_path = os.path.join(output_dir, f"{base_name}_marked.jpg")
-    
-    # Salva l'immagine
     img.save(output_path)
     return output_path
+
+def parse_filename_boxes(filename):
+    """
+    Estrae i bounding box dal nome file in formato:
+    ..._class_x1_y1_x2_y2_class_x1_y1_x2_y2.jpg
+    """
+    name, _ = os.path.splitext(filename)
+    parts = name.split("_")
+    boxes, i = [], 0
+    while i < len(parts):
+        if parts[i] in CLASSES:
+            cls = parts[i]
+            try:
+                x1, y1, x2, y2 = map(int, parts[i+1:i+5])
+                boxes.append({'class': cls, 'coords': [x1, y1, x2, y2]})
+                i += 5
+                continue
+            except Exception:
+                pass
+        i += 1
+    return boxes
 
 # Interfaccia utente
 st.title("🖼️ Annota Immagini")
@@ -88,14 +91,11 @@ st.title("🖼️ Annota Immagini")
 # Sidebar per i controlli
 with st.sidebar:
     st.header("Controlli")
-    
-    # Seleziona la classe
     st.subheader("Seleziona Classe")
     for cls in CLASSES:
         if st.button(cls, key=f"btn_{cls}"):
             st.session_state.current_class = cls
-    
-    # Pulsanti di navigazione
+
     st.subheader("Navigazione")
     col1, col2 = st.columns(2)
     with col1:
@@ -108,96 +108,92 @@ with st.sidebar:
             if st.session_state.images and st.session_state.current_image_idx < len(st.session_state.images) - 1:
                 st.session_state.current_image_idx += 1
                 st.session_state.bboxes = []
-    
-    # Pulsante Salva
+
     if st.button("💾 Salva"):
         if st.session_state.images and st.session_state.bboxes:
-            output_dir = os.path.join(os.path.dirname(st.session_state.images[0]), "annotated")
+            output_dir = os.path.join(os.path.dirname(st.session_state.images[0]['name']), "annotated") if isinstance(st.session_state.images[0], dict) else "annotated"
             save_annotated_image(
                 st.session_state.images[st.session_state.current_image_idx],
                 st.session_state.bboxes,
                 output_dir
             )
             st.sidebar.success(f"Salvato in: {output_dir}")
-    
-    # Seleziona cartella immagini
+
     st.subheader("Carica Immagini")
     uploaded_files = st.file_uploader("Carica immagini", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
-    
     if uploaded_files:
-        # Salva i file caricati in una cartella temporanea
-        temp_dir = st.session_state.temp_dir.name
+        st.session_state.images = []
         for uploaded_file in uploaded_files:
-            with open(os.path.join(temp_dir, uploaded_file.name), "wb") as f:
-                f.write(uploaded_file.getbuffer())
-        
-        # Aggiorna la lista delle immagini
-        st.session_state.images = [os.path.join(temp_dir, f.name) for f in uploaded_files]
-        st.session_state.current_image_idx = 0
-        st.session_state.bboxes = []
-        st.rerun()
+            try:
+                file_content = uploaded_file.getvalue()
+                st.session_state.images.append({
+                    'name': uploaded_file.name,
+                    'content': file_content
+                })
+            except Exception as e:
+                st.sidebar.error(f"❌ Errore con {uploaded_file.name}: {str(e)}")
+        if st.session_state.images:
+            st.session_state.current_image_idx = 0
+            st.session_state.bboxes = []
+            st.rerun()
 
-# Area principale per l'immagine
+# Area principale
 if st.session_state.images:
-    current_image_path = st.session_state.images[st.session_state.current_image_idx]
-    img = Image.open(current_image_path)
-    
-    # Mostra l'immagine con i bounding box
+    current_image = st.session_state.images[st.session_state.current_image_idx]
+    from io import BytesIO
+    img = Image.open(BytesIO(current_image['content']))
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+
     st.subheader(f"Immagine {st.session_state.current_image_idx + 1} di {len(st.session_state.images)}")
-    st.caption(f"File: {os.path.basename(current_image_path)}")
-    
-    # Crea un'immagine con i bounding box
+    st.caption(f"File: {current_image['name']}")
+
+    # Se i bboxes sono vuoti, prova a leggerli dal nome file
+    if not st.session_state.bboxes:
+        parsed_boxes = parse_filename_boxes(current_image['name'])
+        if parsed_boxes:
+            st.session_state.bboxes = parsed_boxes
+
+    # === Editor Bounding Box ===
+    st.subheader("Editor Bounding Box")
+    drawing_mode = st.selectbox("Modalità disegno:", ("rect", "transform"), index=0)
+    stroke_color = COLORS.get(st.session_state.current_class, '#FF0000')
+
     img_with_boxes = img.copy()
     if st.session_state.bboxes:
         img_with_boxes = draw_boxes(img_with_boxes, st.session_state.bboxes)
-    
-    # Mostra l'immagine
-    st.image(img_with_boxes, use_column_width=True)
-    
-    # Aggiungi la possibilità di disegnare un nuovo box
-    st.subheader("Aggiungi Bounding Box")
-    st.write("Seleziona un'area nell'immagine per creare un nuovo box")
-    
-    # Usa st.image con drawing_mode per il disegno
-    drawing_mode = st.selectbox(
-        "Modalità disegno:",
-        ("freedraw", "line", "rect", "circle", "transform", "point")
-    )
-    
-    # Seleziona il colore in base alla classe corrente
-    stroke_color = COLORS.get(st.session_state.current_class, '#FF0000')
-    
-    # Usa st_canvas per disegnare
+
+    # Converti immagine in base64 per compatibilità
+    buffered = BytesIO()
+    img_with_boxes.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    background_url = f"data:image/png;base64,{img_str}"
+
     canvas_result = st_canvas(
         fill_color="rgba(255, 165, 0, 0.3)",
         stroke_width=2,
         stroke_color=stroke_color,
-        background_image=img_with_boxes,
+        background_image=background_url,  # URL base64 invece di PIL.Image
         update_streamlit=True,
         height=img.height,
         width=img.width,
         drawing_mode=drawing_mode,
         key="canvas",
     )
-    
-    # Gestisci il disegno completato
+
     if canvas_result.json_data is not None:
-        objects = canvas_result.json_data["objects"]
-        for obj in objects:
+        new_bboxes = []
+        for obj in canvas_result.json_data["objects"]:
             if obj["type"] == "rect":
                 x1 = int(obj["left"])
                 y1 = int(obj["top"])
                 x2 = int(x1 + obj["width"])
                 y2 = int(y1 + obj["height"])
-                
-                # Aggiungi il nuovo box alla lista
-                st.session_state.bboxes.append({
-                    'coords': [x1, y1, x2, y2],
-                    'class': st.session_state.current_class
-                })
-                st.rerun()
-    
-    # Mostra i box correnti
+                cls = obj.get("class", st.session_state.current_class)
+                new_bboxes.append({'coords': [x1, y1, x2, y2], 'class': cls})
+        if new_bboxes != st.session_state.bboxes:
+            st.session_state.bboxes = new_bboxes
+
     st.subheader("Bounding Box Correnti")
     for i, box in enumerate(st.session_state.bboxes):
         x1, y1, x2, y2 = box['coords']
@@ -222,7 +218,7 @@ if st.session_state.images:
 else:
     st.info("Carica delle immagini usando il pannello a sinistra per iniziare.")
 
-# Aggiungi stili CSS personalizzati
+# CSS personalizzato
 st.markdown("""
     <style>
         .stButton>button {
