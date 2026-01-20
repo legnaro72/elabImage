@@ -4,91 +4,123 @@ import plotly.express as px
 import plotly.graph_objects as go
 import io
 import json
-from datetime import datetime
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="KKK Log Viewer Pro", layout="wide", page_icon="📊")
+st.set_page_config(page_title="KPI Log Viewer Pro", layout="wide", page_icon="📈")
 
 # --- 1. CORE PARSING LOGIC ---
-def parse_kkk_file(uploaded_file):
+def parse_kpi_file(uploaded_file):
     """
-    Parser robusto per il formato .KKK che gestisce sessioni e stream di immagini.
+    Parser aggiornato per file .KPI.
+    Tenta di leggere formati standard (CSV/JSON).
+    Se il formato è custom (testo), usa la logica legacy o necessita adattamento.
     """
-    lines = uploaded_file.getvalue().decode("utf-8").splitlines()
+    content = uploaded_file.getvalue()
+    filename = uploaded_file.name.lower()
     
-    data = []
-    session_info = {"folder": "Unknown", "tool_version": "Unknown", "session_start": None}
-    current_image = {}
-    in_image_block = False
+    # TENTATIVO 1: È un JSON standard?
+    try:
+        data = json.loads(content)
+        # Se è una lista di dizionari, è perfetto
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        # Se è un dizionario con una chiave "data" o "logs"
+        elif isinstance(data, dict):
+            return pd.DataFrame(data.get('data', [data]))
+    except:
+        pass
 
-    for line in lines:
-        line = line.strip()
-        
-        # Gestione Sessione
-        if line.startswith("SESSION_START"):
-            # Reset session info
-            pass 
-        elif line.startswith("folder="):
-            session_info["folder"] = line.split("=")[1]
-        elif line.startswith("start_time="):
-            session_info["session_start"] = line.split("=")[1]
+    # TENTATIVO 2: È un CSV standard?
+    try:
+        return pd.read_csv(io.BytesIO(content))
+    except:
+        pass
 
-        # Gestione Immagine Start
-        elif line.startswith("IMAGE_START"):
-            in_image_block = True
-            parts = line.split()
-            filename = parts[1]
-            # Estrazione timestamp se presente nella riga START
-            img_time = parts[2].split("=")[1] if len(parts) > 2 else None
+    # TENTATIVO 3: Formato Custom (Legacy KKK adattato)
+    # Se il file KPI mantiene la struttura "IMAGE_START" / "IMAGE_END"
+    try:
+        lines = content.decode("utf-8", errors='ignore').splitlines()
+        data = []
+        session_info = {"folder": "Unknown", "session_start": None}
+        current_image = {}
+        in_image_block = False
+
+        for line in lines:
+            line = line.strip()
             
-            current_image = {
-                "session_folder": session_info["folder"],
-                "filename": filename,
-                "timestamp_start": img_time,
-                # Default values (per gestire campi mancanti)
-                "actions": 0, "undos": 0, "redos": 0, "ocr_edits": 0,
-                "num_letta_plate": 0, "num_ocr": 0, "ocr_validated": 0,
-                "ocr_not_validated": 0, "time_spent_sec": 0.0,
-                "modified": "False", "saved": "False"
-            }
-
-        # Parsing Key-Value dentro il blocco immagine
-        elif in_image_block and "=" in line and not line.startswith("IMAGE_END"):
-            try:
-                key, val = line.split("=")
-                # Parsing intelligente dei tipi
-                if val.lower() == "true": val = True
-                elif val.lower() == "false": val = False
-                elif val.replace('.', '', 1).isdigit(): val = float(val) if '.' in val else int(val)
+            if line.startswith("folder="):
+                session_info["folder"] = line.split("=")[1]
+            
+            # Adattare qui se i tag sono cambiati (es. KPI_START invece di IMAGE_START)
+            elif line.startswith("IMAGE_START") or line.startswith("KPI_START"):
+                in_image_block = True
+                parts = line.split()
+                # Gestione robusta se mancano pezzi
+                filename_img = parts[1] if len(parts) > 1 else "unknown"
                 
-                current_image[key] = val
-            except Exception:
-                pass # Ignora righe malformate
+                current_image = {
+                    "session_folder": session_info["folder"],
+                    "filename": filename_img,
+                    # Default values per KPI
+                    "actions": 0, "undos": 0, "time_spent_sec": 0.0,
+                    "complexity_score": 0, "is_anomaly": False
+                }
 
-        # Gestione Immagine End
-        elif line.startswith("IMAGE_END"):
-            if current_image:
-                data.append(current_image)
-            in_image_block = False
-            current_image = {}
+            elif in_image_block and "=" in line and not (line.startswith("IMAGE_END") or line.startswith("KPI_END")):
+                try:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    
+                    if val.lower() == "true": val = True
+                    elif val.lower() == "false": val = False
+                    elif val.replace('.', '', 1).isdigit(): val = float(val) if '.' in val else int(val)
+                    
+                    current_image[key] = val
+                except:
+                    pass
 
-    return pd.DataFrame(data)
+            elif line.startswith("IMAGE_END") or line.startswith("KPI_END"):
+                if current_image:
+                    data.append(current_image)
+                in_image_block = False
+                current_image = {}
+        
+        if data:
+            return pd.DataFrame(data)
+            
+    except Exception as e:
+        st.error(f"Errore nel parsing custom: {e}")
+
+    # Se tutto fallisce
+    st.error("Formato file non riconosciuto. Assicurati che sia un CSV, JSON o il formato Custom corretto.")
+    return pd.DataFrame()
 
 # --- 2. DATA ENRICHMENT (KPIs) ---
 def enrich_data(df):
     if df.empty:
         return df
     
-    # 4.1 Indice di Difficoltà (Actions + Undos + Redos + OCR Edits)
+    # Normalizzazione nomi colonne (se il file KPI usa nomi diversi)
+    # Esempio: se nel nuovo file si chiama 'duration' invece di 'time_spent_sec'
+    if 'duration' in df.columns and 'time_spent_sec' not in df.columns:
+        df['time_spent_sec'] = df['duration']
+    
+    # Assicuriamo che le colonne esistano per evitare crash
+    required_cols = ['actions', 'undos', 'redos', 'ocr_edits', 'time_spent_sec']
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = 0
+
+    # 4.1 Indice di Difficoltà
     df['complexity_score'] = df['actions'] + df['undos'] + df['redos'] + df['ocr_edits']
     
-    # 4.5 Efficienza (Tempo speso / Azioni). Gestione divisione per zero.
+    # 4.5 Efficienza
     df['efficiency_sec_per_action'] = df.apply(
         lambda x: x['time_spent_sec'] / x['actions'] if x['actions'] > 0 else 0, axis=1
     )
 
     # Flag Anomalie
-    # Esempio: Tempo > 60s ma poche azioni (<3), oppure troppi Undo (>5)
     df['is_anomaly'] = (
         ((df['time_spent_sec'] > 60) & (df['actions'] < 3)) | 
         (df['undos'] > 5) |
@@ -98,140 +130,106 @@ def enrich_data(df):
     return df
 
 # --- 3. UI DASHBOARD ---
-st.title("📊 Viewer Analitico Log Annotazione (.KKK)")
-st.markdown("Analisi KPI Operatore, Quality Gate e Anomalie")
+st.title("📈 KPI Viewer Analitico")
+st.markdown("Analisi Performance e Metriche Operative (File .KPI)")
 
-uploaded_file = st.sidebar.file_uploader("Carica file .KKK", type=["kkk", "txt"])
+# Accetta .kpi, .csv, .json, .txt
+uploaded_file = st.sidebar.file_uploader("Carica file KPI", type=["kpi", "txt", "csv", "json"])
 
 if uploaded_file is not None:
     # 1. Parsing
-    raw_df = parse_kkk_file(uploaded_file)
-    df = enrich_data(raw_df)
-
-    # Sidebar Filtri
-    st.sidebar.header("Filtri")
-    if 'session_folder' in df.columns:
-        folders = df['session_folder'].unique()
-        selected_folder = st.sidebar.multiselect("Seleziona Cartella/Sessione", folders, default=folders)
-        if selected_folder:
-            df = df[df['session_folder'].isin(selected_folder)]
-
-    # --- SEZIONE 1: STATISTICHE DI SESSIONE (Il "Must Have") ---
-    st.header("1. Panoramica Sessione (KPI Alti)")
+    raw_df = parse_kpi_file(uploaded_file)
     
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total_time = df['time_spent_sec'].sum()
-    avg_time = df['time_spent_sec'].mean()
-    total_imgs = len(df)
-    total_actions = df['actions'].sum()
+    if not raw_df.empty:
+        df = enrich_data(raw_df)
 
-    with col1:
-        st.metric("⏱️ Tempo Totale", f"{total_time/60:.1f} min")
-    with col2:
-        st.metric("🖼️ Immagini Elaborate", f"{total_imgs}")
-    with col3:
-        st.metric("⚡ Media Sec/Img", f"{avg_time:.2f} s", delta_color="inverse", delta=f"{avg_time - 30:.1f} vs Target 30s")
-    with col4:
-        st.metric("🖱️ Totale Azioni", f"{total_actions}")
+        # Sidebar Filtri
+        st.sidebar.header("Filtri")
+        if 'session_folder' in df.columns:
+            folders = df['session_folder'].unique()
+            selected_folder = st.sidebar.multiselect("Seleziona Sessione", folders, default=folders)
+            if selected_folder:
+                df = df[df['session_folder'].isin(selected_folder)]
 
-    st.markdown("---")
-
-    # --- SEZIONE 2: QUALITY GATE AUTOMATICI ---
-    st.header("2. Quality Gates & Anomalie")
-    
-    col_q1, col_q2 = st.columns([1, 2])
-    
-    with col_q1:
-        st.subheader("⚠️ Alert Anomalie")
-        anomalies = df[df['is_anomaly'] == True]
-        if not anomalies.empty:
-            st.error(f"Trovate {len(anomalies)} immagini sospette!")
-            st.dataframe(anomalies[['filename', 'time_spent_sec', 'actions', 'undos', 'complexity_score']], hide_index=True)
-        else:
-            st.success("Nessuna anomalia rilevata. Flusso pulito.")
-
-    with col_q2:
-        st.subheader("🔍 Distribuzione Tempo vs Complessità")
-        # Scatter plot: Asse X = Tempo, Asse Y = Complessità (Azioni)
-        # Se un punto è in basso a destra (Tanto tempo, poche azioni) = Distrazione
-        # Se un punto è in alto a sinistra (Poco tempo, tante azioni) = Operatore veloce/esperto
-        fig_scatter = px.scatter(
-            df, 
-            x="time_spent_sec", 
-            y="complexity_score", 
-            color="is_anomaly",
-            hover_data=['filename', 'undos', 'ocr_validated'],
-            title="Analisi Performance: Tempo vs Azioni",
-            color_discrete_map={False: "blue", True: "red"}
-        )
-        # Linee di soglia (Quality Gate visivi)
-        fig_scatter.add_vline(x=60, line_dash="dash", line_color="orange", annotation_text="Warning Time")
-        st.plotly_chart(fig_scatter, use_container_width=True)
-
-    # --- SEZIONE 3: STATISTICHE OCR (Se presenti) ---
-    st.markdown("---")
-    st.header("3. Dettaglio OCR & Validazione")
-    
-    # Aggregazione dati OCR
-    ocr_cols = ['num_ocr', 'ocr_validated', 'ocr_not_validated', 'num_letta_plate']
-    if all(col in df.columns for col in ocr_cols):
-        ocr_sums = df[ocr_cols].sum()
+        # --- SEZIONE 1: KPI PRINCIPALI ---
+        st.header("1. Performance Generali")
         
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("🔢 Targhe Totali OCR", int(ocr_sums['num_ocr']))
-        with c2:
-            st.metric("✅ Validate", int(ocr_sums['ocr_validated']))
-        with c3:
-            # Calcolo % Validazione
-            val_rate = (ocr_sums['ocr_validated'] / ocr_sums['num_ocr'] * 100) if ocr_sums['num_ocr'] > 0 else 0
-            st.metric("📊 Tasso Validazione", f"{val_rate:.1f}%")
-            
-        # Grafico a barre impilate per immagine (mostra solo le prime 50 per leggibilità)
-        st.caption("Dettaglio validazione per le ultime 30 immagini elaborate:")
-        df_chart = df.tail(30)
-        fig_ocr = go.Figure(data=[
-            go.Bar(name='Validate', x=df_chart['filename'], y=df_chart['ocr_validated'], marker_color='green'),
-            go.Bar(name='Non Validate', x=df_chart['filename'], y=df_chart['ocr_not_validated'], marker_color='red')
-        ])
-        fig_ocr.update_layout(barmode='stack', title="Validazione OCR per Immagine", xaxis_tickangle=-45)
-        st.plotly_chart(fig_ocr, use_container_width=True)
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_time = df['time_spent_sec'].sum()
+        avg_time = df['time_spent_sec'].mean()
+        total_items = len(df)
+        total_actions = df['actions'].sum()
 
-    # --- SEZIONE 4: DATA TABLE & EXPORT ---
-    st.markdown("---")
-    st.header("4. Export Dati")
-    
-    st.dataframe(df, use_container_width=True)
-    
-    col_exp1, col_exp2 = st.columns(2)
-    
-    # Export CSV
-    csv = df.to_csv(index=False).encode('utf-8')
-    col_exp1.download_button(
-        label="📥 Download CSV Report",
-        data=csv,
-        file_name='kpi_report.csv',
-        mime='text/csv',
-    )
-    
-    # Export JSON
-    json_str = df.to_json(orient="records", date_format="iso")
-    col_exp2.download_button(
-        label="📥 Download JSON Report",
-        data=json_str,
-        file_name='kpi_report.json',
-        mime='application/json',
-    )
+        with col1:
+            st.metric("⏱️ Tempo Totale", f"{total_time/60:.1f} min")
+        with col2:
+            st.metric("📄 Elementi Analizzati", f"{total_items}")
+        with col3:
+            st.metric("⚡ Media Sec/Item", f"{avg_time:.2f} s")
+        with col4:
+            st.metric("🖱️ Totale Azioni", f"{total_actions}")
 
+        st.markdown("---")
+
+        # --- SEZIONE 2: ANOMALIE & QUALITÀ ---
+        st.header("2. Qualità & Anomalie")
+        
+        col_q1, col_q2 = st.columns([1, 2])
+        
+        with col_q1:
+            st.subheader("⚠️ Alert Anomalie")
+            anomalies = df[df['is_anomaly'] == True]
+            if not anomalies.empty:
+                st.error(f"Rilevati {len(anomalies)} casi anomali")
+                # Mostra colonne rilevanti se esistono
+                cols_to_show = [c for c in ['filename', 'time_spent_sec', 'actions', 'complexity_score'] if c in df.columns]
+                st.dataframe(anomalies[cols_to_show], hide_index=True)
+            else:
+                st.success("Nessuna anomalia rilevata.")
+
+        with col_q2:
+            st.subheader("🔍 Performance: Tempo vs Azioni")
+            if 'complexity_score' in df.columns and 'time_spent_sec' in df.columns:
+                fig_scatter = px.scatter(
+                    df, 
+                    x="time_spent_sec", 
+                    y="complexity_score", 
+                    color="is_anomaly",
+                    hover_data=[c for c in ['filename', 'undos'] if c in df.columns],
+                    title="Distribuzione Sforzo Operativo",
+                    color_discrete_map={False: "blue", True: "red"}
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            else:
+                st.info("Dati insufficienti per il grafico (mancano colonne tempo/azioni).")
+
+        # --- SEZIONE 3: DATA TABLE & EXPORT ---
+        st.markdown("---")
+        st.header("3. Dati Dettagliati")
+        
+        st.dataframe(df, use_container_width=True)
+        
+        col_exp1, col_exp2 = st.columns(2)
+        
+        # Export CSV
+        csv = df.to_csv(index=False).encode('utf-8')
+        col_exp1.download_button(
+            label="📥 Download CSV Report",
+            data=csv,
+            file_name='kpi_export.csv',
+            mime='text/csv',
+        )
+        
+        # Export JSON
+        json_str = df.to_json(orient="records", date_format="iso")
+        col_exp2.download_button(
+            label="📥 Download JSON Report",
+            data=json_str,
+            file_name='kpi_export.json',
+            mime='application/json',
+        )
+    else:
+        st.warning("Il file sembra vuoto o il formato non è stato riconosciuto.")
 else:
-    st.info("Carica un file .KKK per iniziare l'analisi.")
-    # Esempio di struttura attesa per l'utente
-    st.markdown("""
-    ### Struttura file supportata
-    Il sistema si aspetta blocchi `IMAGE_START` ... `IMAGE_END` contenenti chiavi come:
-    - `time_spent_sec`
-    - `actions`
-    - `undos` / `redos`
-    - Dati OCR (`ocr_validated`, ecc.)
-    """)
+    st.info("Carica un file .KPI (o .csv/.json) per iniziare.")
