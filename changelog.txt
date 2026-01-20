@@ -1,0 +1,44 @@
+ANNOTAIMMAGINI Vers 6.0
+
+1.Inserita la modalità di lavoro SMART (chiede e ricorda all'utente di salvare solo se ci sono state modifiche non salvate)
+	- alla partenza viene chiesta la modalità preferita
+	- attraverso menu a tendina è possibile cambiare la modalità di lavoro al volo 
+2.Inserito il pulsante SNAPSHOT vicino a Cancella BOX: 
+	- salva immagine annotata con BB sovraimpressi e targhe annotate su barra inferiore nera
+	  (vedi cartella "MarkedSnapshot" allo stesso path di esecuzione del tool)
+
+ANNOTAIMMAGINI Vers 5.1
+
+1.Implementata la funzione UNDO. Ingaggiabile con  "ctrl + z"  o "ctrl + Z"
+2.Implementata la funzione REDO.Ingaggiabile con  "ctrl + y"  o "ctrl + Y"
+3.Undo e redo "parlanti"
+
+ANNOTAIMMAGINI Vers 5.0
+
+1.Ottimizzata la partenza. Se caricata cartella senza immagini non esce e riproprone l'azione di scelta cartella.
+2.Implementata la funzionalità di clona BB. Serve a copiare uno stesso BB da una immagine alle successive,
+  Utile quando un oggetto ripetuto su piu immagini non è presente.
+3.Reso cliccabile il BB piu piccolo contenuto in uno piu grosso.
+
+ANNOTAIMMAGINI Vers 4.3
+
+1.Ottimizzata funzionalità inserimento OCR. Migliorie su codice per gestione filtro. Migliorie minori.
+
+ANNOTAIMMAGINI Vers 4.2
+
+1.Migliorata gestione LettaPlate (bug fix dopo conversione da plate a Letta_plate crash silenzioso non era piu possibile fare altte conversioni o creare nuoviBB)
+
+ANNOTAIMMAGINI Vers 4.1
+
+1.Cambiata scorciatoi sa Shift+F (problema inserimento targhe) a Control+f/F
+
+ANNOTAIMMAGINI Vers 4.0
+ 
+Nella attuale versione sono state fatte le seguenti varianti:
+1.Inseriti i tasti per about ed Help on-line -spostato pulsante cambia cartella prima della preview del nome dell immagine.
+2.Inserita la possibilità di filtrare una classe su una cartella questa funzionalità mostra solo le immagini che contengono quella specifica classe è possibile cambiare il filtro attraverso la combinazione di tasti Shitt + F
+3.Inserita la navigazione dei bounding box attraverso la barra spaziatrice che cicla su tutti i Bounding box appartenenti a una specifica classe (quella correntemente selezionata) nel caso in cui il filtro sia disabilitato mentre nel caso in cui il filtro è abilitato la pressione della barra spaziatrice cicla su tutti gli oggetti appartenenti alla classe filtrata
+
+
+
+

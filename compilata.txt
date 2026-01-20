@@ -1,0 +1,1 @@
+pyinstaller --onefile --add-data "max.jpg;." --add-data "changelog.txt;." --icon="leonardo.ico" --name "AnnotaImmaginiETarghe v6.0" "annotaimmagini_OCR_JSON_v60.py"
