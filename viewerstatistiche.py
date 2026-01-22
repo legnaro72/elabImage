@@ -14,7 +14,7 @@ import tempfile
 # CONFIGURAZIONE PAGINA
 # ==========================================================
 st.set_page_config(
-    page_title="KPI Manager v12 – FINAL PDF",
+    page_title="KPI Manager v3 – FINAL PDF",
     layout="wide",
     page_icon="📊"
 )
