@@ -392,7 +392,7 @@ with st.sidebar:
 # ==========================================================
 # MAIN
 # ==========================================================
-st.title("🧠 KPI Manager v3 – FINAL VERSION") 
+st.title("🧠 KPI Manager v3 – FINAL ") 
 
 pdf_figures = {}
 
