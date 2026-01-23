@@ -1,0 +1,68 @@
+{
+    "boxes": [
+        {
+            "class": "person",
+            "coords": [
+                516,
+                210,
+                578,
+                372
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                428,
+                214,
+                494,
+                362
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                665,
+                176,
+                711,
+                314
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                637,
+                171,
+                683,
+                313
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                557,
+                7,
+                565,
+                21
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                406,
+                16,
+                416,
+                28
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                417,
+                16,
+                427,
+                28
+            ]
+        }
+    ],
+    "save_count": 2
+}

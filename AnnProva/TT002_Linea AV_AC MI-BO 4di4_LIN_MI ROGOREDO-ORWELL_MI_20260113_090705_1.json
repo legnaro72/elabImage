@@ -1,0 +1,32 @@
+{
+    "boxes": [
+        {
+            "class": "person",
+            "coords": [
+                326,
+                131,
+                366,
+                220
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                271,
+                126,
+                299,
+                210
+            ]
+        },
+        {
+            "class": "train",
+            "coords": [
+                0,
+                0,
+                146,
+                16
+            ]
+        }
+    ],
+    "save_count": 2
+}
