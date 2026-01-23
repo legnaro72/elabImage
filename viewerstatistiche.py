@@ -623,35 +623,71 @@ with st.sidebar:
     st.write("⚖️ **Confronto (Opzionale)**")
     uploaded_file_compare = st.file_uploader("Carica file per confronto", type=["kpi", "txt", "kkk"])
 
-# --- LOGICA CARICAMENTO FILE (HYBRID) ---
-if upl_file:
-    # 1. L'utente ha caricato un file: usiamo quello
+# --- LOGICA CARICAMENTO FILE (PRIORITÀ ALL'UTENTE) ---
+file_content = None
+
+# 1. CASO FILE UTENTE: Priorità Assoluta
+if upl_file is not None:
     file_content = upl_file
+    # FONDAMENTALE: Resettiamo il puntatore del file per sicurezza
+    file_content.seek(0)
     source_name = upl_file.name
-    st.toast("File utente caricato!", icon="📂")
+    st.toast(f"✅ Usando il TUO file: {source_name}", icon="📂")
+
+# 2. CASO DEMO: Solo se NON c'è file utente
 else:
-    # 2. Nessun file caricato: proviamo a caricare il default da Cloud
     default_path = os.path.join(DEFAULT_FOLDER, DEFAULT_KPI_FILE)
     
-    # Verifica esistenza file
     if os.path.exists(default_path):
         try:
             with open(default_path, "rb") as f:
                 content = f.read()
                 file_content = BytesIO(content)
                 
-                # --- FIX CRASH STREAMLIT CACHE ---
-                # Assegniamo il percorso ASSOLUTO a .name.
-                # In questo modo st.cache_data trova il file fisico e non dà errore.
-                file_content.name = os.path.abspath(default_path) 
+                # FIX PER LA CACHE (Evita l'errore getmtime)
+                file_content.name = os.path.abspath(default_path)
                 
                 source_name = DEFAULT_KPI_FILE
-            st.toast(f"Modalità Demo: Caricato {DEFAULT_KPI_FILE}", icon="☁️")
+            st.toast(f"⚠️ Nessun file caricato. Modalità DEMO attiva.", icon="☁️")
         except Exception as e:
-            st.error(f"Errore caricamento file default: {e}")
-    else:
-        # Se il file non esiste (es. path sbagliato), evitiamo crash successivi
-        st.warning(f"File di default non trovato in: {default_path}")
+            st.error(f"Errore caricamento Demo: {e}")
+
+# --- ELABORAZIONE DATI (Eseguita solo se abbiamo un contenuto) ---
+if file_content:
+    # Parsing del file
+    try:
+        # Passiamo il file al parser
+        df_raw, df_unique = enrich_data(parse_kpi_file(file_content))
+        
+        # --- CORREZIONE SESSIONI (Start from 1) ---
+        df_raw = normalize_session_ids(df_raw)
+        if 'session_id' in df_unique.columns:
+            df_unique = normalize_session_ids(df_unique)
+            
+    except Exception as e:
+        st.error(f"Errore nella lettura del file KPI: {e}")
+        st.stop() # Ferma l'esecuzione se il file è corrotto
+
+    # Parsing del file CONFRONTO (Se esiste)
+    df_compare_raw = None
+    df_compare_grouped = None
+    
+    if uploaded_file_compare:
+        try:
+            df_compare_raw, df_compare_grouped = enrich_data(parse_kpi_file(uploaded_file_compare))
+            st.toast(f"Confronto attivo", icon="⚖️")
+        except Exception as e:
+            st.error(f"Errore nel file di confronto: {e}")
+
+    # --- INIZIO TABS ---
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Dashboard",
+        "📈 Analisi Efficienza",
+        "🕒 Timeline",
+        "👁️ Ispezione"
+    ])
+    
+    # ... (Il resto del codice dentro i tab rimane uguale) ...
 
 # --- ELABORAZIONE PRINCIPALE ---
 if file_content:
