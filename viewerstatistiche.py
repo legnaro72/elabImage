@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from fpdf import FPDF
 import tempfile
 import uuid  # <--- AGGIUNGI QUESTO IMPORT
+from io import BytesIO
 # ==========================================================
 # CONFIGURAZIONE PAGINA
 # ==========================================================
@@ -550,7 +551,10 @@ with st.sidebar:
     # FIX PATH: Aggiornamento automatico con path dal log
     if upl_file and not st.session_state.current_folder_path:
         st.info("📁 Seleziona la cartella che contiene le immagini del KPI caricato")
-
+        
+    # FIX PATH: Se siamo in modalità default e il path è vuoto, forziamo AnnProva
+    if not st.session_state.current_folder_path and os.path.exists("AnnProva"):
+         st.session_state.current_folder_path = "AnnProva"
     use_override = st.toggle("Usa percorso locale", value=True)
     
     path_override = st.text_input(
@@ -566,6 +570,15 @@ with st.sidebar:
 st.title("🧠 KPI Manager v3 – FINAL ") 
 
 pdf_figures = {}
+
+# --- MODIFICA CLOUD: Percorsi di Default ---
+# Se siamo sul cloud, cerchiamo questa cartella relativa
+DEFAULT_FOLDER = "AnnProva"
+DEFAULT_KPI_FILE = "KPIEsempio.kpi"
+
+# Variabile per contenere il contenuto del file (o caricato o di default)
+file_content = None
+source_name = ""
 
 if upl_file:
     # Parsing del file PRINCIPALE
