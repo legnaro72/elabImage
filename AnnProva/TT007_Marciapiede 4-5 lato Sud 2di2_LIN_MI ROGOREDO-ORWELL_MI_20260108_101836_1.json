@@ -1,0 +1,23 @@
+{
+    "boxes": [
+        {
+            "class": "person",
+            "coords": [
+                448,
+                242,
+                475,
+                326
+            ]
+        },
+        {
+            "class": "person",
+            "coords": [
+                166,
+                235,
+                193,
+                302
+            ]
+        }
+    ],
+    "save_count": 1
+}
