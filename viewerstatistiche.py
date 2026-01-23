@@ -565,22 +565,25 @@ with st.sidebar:
          st.session_state.current_folder_path = path_override
 
 # ==========================================================
-# MAIN
+# TITOLO + COSTANTI
 # ==========================================================
 st.title("🧠 KPI Manager v3 – FINAL")
 
 pdf_figures = {}
+
 DEFAULT_FOLDER = "AnnProva"
 DEFAULT_KPI_FILE = "KPIEsempio.kpi"
 
-# --- 1. SIDEBAR: Definiamo qui la variabile upl_file ---
+
+# ==========================================================
+# 1. SIDEBAR – INPUT UTENTE
+# ==========================================================
 with st.sidebar:
     st.markdown("## 📂 Sorgente Dati")
-    
-    # Assegniamo un KEY univoco per evitare che Streamlit perda il file
+
     upl_file = st.file_uploader(
-        "Carica File KPI (Opzionale)", 
-        type=["kpi", "txt", "kkk"], 
+        "Carica File KPI (Opzionale)",
+        type=["kpi", "txt", "kkk"],
         key="main_kpi_uploader"
     )
 
@@ -593,87 +596,100 @@ with st.sidebar:
         index=0
     )
 
-    # Gestione Path
     if path_mode == "Cloud (GitHub Repo)":
         st.session_state.current_folder_path = DEFAULT_FOLDER
         path_override = DEFAULT_FOLDER
         use_override = True
         st.info(f"📂 Cartella attiva: `{DEFAULT_FOLDER}/`")
     else:
-        curr_val = st.session_state.current_folder_path if st.session_state.current_folder_path != DEFAULT_FOLDER else ""
-        path_input = st.text_input("Inserisci Path locale (es. C:/Dati):", value=curr_val)
-        st.session_state.current_folder_path = path_input
-        path_override = path_input
+        curr_val = (
+            st.session_state.current_folder_path
+            if st.session_state.current_folder_path != DEFAULT_FOLDER
+            else ""
+        )
+        path_override = st.text_input(
+            "Inserisci Path locale (es. C:/Dati):",
+            value=curr_val
+        )
+        st.session_state.current_folder_path = path_override
         use_override = True
-        
+
+        if path_override:
+            st.warning("⚠️ In modalità Locale le immagini sono visibili solo in esecuzione locale.")
+
     st.markdown("---")
-    uploaded_file_compare = st.file_uploader("Carica file confronto (Opzionale)", type=["kpi", "txt", "kkk"])
+    uploaded_file_compare = st.file_uploader(
+        "Carica file confronto (Opzionale)",
+        type=["kpi", "txt", "kkk"],
+        key="compare_kpi_uploader"
+    )
 
 
-# --- 2. LOGICA DI CARICAMENTO (Priorità Assoluta al File Utente) ---
+# ==========================================================
+# 2. LOGICA DI CARICAMENTO FILE (PRIORITÀ ASSOLUTA ALL’UTENTE)
+# ==========================================================
 file_content = None
 source_name = ""
 
-# DEBUG: Se vedi questo messaggio, il file è stato ricevuto da Streamlit
 if upl_file is not None:
-    # CASO A: L'utente ha caricato un file
+    # CASO A: FILE CARICATO DALL’UTENTE
     file_content = upl_file
-    file_content.seek(0) # Reset puntatore fondamentale
+    file_content.seek(0)
     source_name = upl_file.name
-    st.toast(f"✅ FILE RILEVATO: {source_name}", icon="📂")
+
+    st.toast(f"✅ Usando il tuo file: {source_name}", icon="📂")
 
 else:
-    # CASO B: Nessun file caricato -> Carico DEMO
+    # CASO B: MODALITÀ DEMO (SOLO SE NON C'È UPLOAD)
     default_path = os.path.join(DEFAULT_FOLDER, DEFAULT_KPI_FILE)
-    
+
     if os.path.exists(default_path):
-        try:
-            with open(default_path, "rb") as f:
-                content = f.read()
-                file_content = BytesIO(content)
-                # Fix per la cache di Streamlit
-                file_content.name = os.path.abspath(default_path)
-                source_name = DEFAULT_KPI_FILE
-            
-            st.toast("⚠️ Nessun file caricato. Modalità DEMO attiva.", icon="☁️")
-        except Exception as e:
-            st.error(f"Errore caricamento Demo: {e}")
+        with open(default_path, "rb") as f:
+            content = f.read()
+
+        file_content = BytesIO(content)
+        file_content.name = os.path.abspath(default_path)
+        source_name = DEFAULT_KPI_FILE
+
+        st.toast("☁️ Nessun file caricato → Modalità DEMO", icon="🧪")
     else:
-        st.warning(f"File demo non trovato in: {default_path}")
+        st.error(f"❌ File demo non trovato: {default_path}")
 
 
-# --- 3. ELABORAZIONE (Parte rimasta invariata) ---
+# ==========================================================
+# 3. ELABORAZIONE DATI (UNICO BLOCCO)
+# ==========================================================
 if file_content:
-    # Parsing
     try:
+        # Parsing file principale
         df_raw, df_unique = enrich_data(parse_kpi_file(file_content))
-        
-        # Correzione sessioni
+
         df_raw = normalize_session_ids(df_raw)
         if 'session_id' in df_unique.columns:
             df_unique = normalize_session_ids(df_unique)
-            
+
+        # Parsing file di confronto (opzionale)
+        df_compare_raw = None
+        df_compare_grouped = None
+
+        if uploaded_file_compare:
+            df_compare_raw, df_compare_grouped = enrich_data(
+                parse_kpi_file(uploaded_file_compare)
+            )
+            st.toast("⚖️ Confronto attivo", icon="📊")
+
+        # Tabs applicazione
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Dashboard",
+            "📈 Analisi Efficienza",
+            "🕒 Timeline",
+            "👁️ Ispezione"
+        ])
+
     except Exception as e:
-        st.error(f"Errore lettura file: {e}")
+        st.error(f"Errore nella lettura del file KPI: {e}")
         st.stop()
-
-    # Parsing Confronto
-    df_compare_raw = None
-    df_compare_grouped = None
-    if uploaded_file_compare:
-        try:
-            df_compare_raw, df_compare_grouped = enrich_data(parse_kpi_file(uploaded_file_compare))
-        except:
-            pass
-
-    # --- TABS (Dashboard, etc.) ---
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Dashboard",
-        "📈 Analisi Efficienza",
-        "🕒 Timeline",
-        "👁️ Ispezione"
-    ])
-
+        
     with tab1:
         # ==========================================
         # 1. CALCOLI DATI PRINCIPALI
