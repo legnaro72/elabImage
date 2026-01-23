@@ -639,24 +639,29 @@ if upl_file:
         k1, k2, k3, k4, k5 = st.columns(5)
         
         with k1:
-            delta_val = (tot_unique - c_unique) if c_unique is not None else None
+            # CORREZIONE: Aggiunto int() per convertire da numpy a python nativo
+            delta_val = int(tot_unique - c_unique) if c_unique is not None else None
             st.metric("🖼️ Imm. Univoche", tot_unique, delta=delta_val)
         
         with k2:
             val_min = tot_work/60
+            # Questo era già una stringa (f-string), quindi è sicuro
             delta_val = f"{(val_min - (c_time/60)):.1f} m" if c_time is not None else None
             st.metric("⏱️ Tempo Tot", f"{val_min:.1f} m", delta=delta_val, delta_color="inverse")
 
         with k3:
+            # Sicuro (stringa)
             delta_val = f"{(avg_time - c_avg_time):.1f} s" if c_avg_time is not None else None
             st.metric("⚡ Media/Imm", f"{avg_time:.1f} s", delta=delta_val, delta_color="inverse")
 
         with k4:
+            # Sicuro (stringa)
             delta_val = f"{(time_per_action - c_time_action):.2f} s" if c_time_action is not None else None
             st.metric("⏱️ Sec/Azione", f"{time_per_action:.2f} s", delta=delta_val, delta_color="inverse")
             
         with k5:
-            delta_val = (tot_actions - c_actions) if c_actions is not None else None
+            # CORREZIONE ERRORE LINEA 660: Aggiunto int() attorno alla sottrazione
+            delta_val = int(tot_actions - c_actions) if c_actions is not None else None
             st.metric("🖱️ Azioni Tot", int(tot_actions), delta=delta_val, delta_color="inverse")
 
         # --- RIGA 2: QUALITÀ PRINCIPALE ---
