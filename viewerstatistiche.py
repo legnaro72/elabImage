@@ -632,16 +632,26 @@ if upl_file:
 else:
     # 2. Nessun file caricato: proviamo a caricare il default da Cloud
     default_path = os.path.join(DEFAULT_FOLDER, DEFAULT_KPI_FILE)
+    
+    # Verifica esistenza file
     if os.path.exists(default_path):
         try:
             with open(default_path, "rb") as f:
                 content = f.read()
                 file_content = BytesIO(content)
-                file_content.name = DEFAULT_KPI_FILE # Attributo necessario per il parser
+                
+                # --- FIX CRASH STREAMLIT CACHE ---
+                # Assegniamo il percorso ASSOLUTO a .name.
+                # In questo modo st.cache_data trova il file fisico e non dà errore.
+                file_content.name = os.path.abspath(default_path) 
+                
                 source_name = DEFAULT_KPI_FILE
             st.toast(f"Modalità Demo: Caricato {DEFAULT_KPI_FILE}", icon="☁️")
         except Exception as e:
             st.error(f"Errore caricamento file default: {e}")
+    else:
+        # Se il file non esiste (es. path sbagliato), evitiamo crash successivi
+        st.warning(f"File di default non trovato in: {default_path}")
 
 # --- ELABORAZIONE PRINCIPALE ---
 if file_content:
