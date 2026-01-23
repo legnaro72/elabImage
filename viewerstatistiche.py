@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from fpdf import FPDF
 import tempfile
 import uuid  # <--- AGGIUNGI QUESTO IMPORT
-from io import BytesIO
+from io import BytesIO  # Import necessario per leggere il file di default
 # ==========================================================
 # CONFIGURAZIONE PAGINA
 # ==========================================================
@@ -567,27 +567,91 @@ with st.sidebar:
 # ==========================================================
 # MAIN
 # ==========================================================
-st.title("🧠 KPI Manager v3 – FINAL ") 
+
+
+st.title("🧠 KPI Manager v3 – FINAL")
 
 pdf_figures = {}
 
-# --- MODIFICA CLOUD: Percorsi di Default ---
-# Se siamo sul cloud, cerchiamo questa cartella relativa
+# --- COSTANTI CLOUD / DEFAULT ---
 DEFAULT_FOLDER = "AnnProva"
 DEFAULT_KPI_FILE = "KPIEsempio.kpi"
 
-# Variabile per contenere il contenuto del file (o caricato o di default)
+# Variabili di stato per il file
 file_content = None
 source_name = ""
 
+# --- SIDEBAR: GESTIONE INPUT E PATH ---
+with st.sidebar:
+    st.markdown("## 📂 Sorgente Dati")
+
+    # 1. Caricamento File KPI (Sovrascrive il default)
+    upl_file = st.file_uploader("Carica File KPI (Opzionale)", type=["kpi", "txt", "kkk"])
+
+    st.markdown("---")
+    st.write("🖼️ **Sorgente Immagini & JSON**")
+
+    # 2. Scelta Modalità Percorso (Cloud vs Locale)
+    # Seleziona da dove l'app deve cercare le immagini
+    path_mode = st.radio(
+        "Dove sono le immagini?",
+        ["Cloud (GitHub Repo)", "Locale (Il tuo PC)"],
+        index=0
+    )
+
+    if path_mode == "Cloud (GitHub Repo)":
+        # Imposta il percorso fisso della repo
+        st.session_state.current_folder_path = DEFAULT_FOLDER
+        path_override = DEFAULT_FOLDER
+        use_override = True
+        st.info(f"📂 Cartella attiva: `{DEFAULT_FOLDER}/`")
+    else:
+        # Permette all'utente di scrivere il percorso locale
+        # Recuperiamo il valore precedente se diverso dal default cloud
+        curr_val = st.session_state.current_folder_path if st.session_state.current_folder_path != DEFAULT_FOLDER else ""
+        
+        path_input = st.text_input("Inserisci Path locale (es. C:/Dati):", value=curr_val)
+        st.session_state.current_folder_path = path_input
+        path_override = path_input
+        use_override = True
+        
+        if path_input:
+            st.warning("⚠️ Nota: In 'Locale', le immagini nel Tab 4 si vedono solo se esegui l'app in locale (localhost).")
+
+    # 3. File di Confronto
+    st.markdown("---")
+    st.write("⚖️ **Confronto (Opzionale)**")
+    uploaded_file_compare = st.file_uploader("Carica file per confronto", type=["kpi", "txt", "kkk"])
+
+# --- LOGICA CARICAMENTO FILE (HYBRID) ---
 if upl_file:
-    # Parsing del file PRINCIPALE
-    df_raw, df_unique = enrich_data(parse_kpi_file(upl_file))
+    # 1. L'utente ha caricato un file: usiamo quello
+    file_content = upl_file
+    source_name = upl_file.name
+    st.toast("File utente caricato!", icon="📂")
+else:
+    # 2. Nessun file caricato: proviamo a caricare il default da Cloud
+    default_path = os.path.join(DEFAULT_FOLDER, DEFAULT_KPI_FILE)
+    if os.path.exists(default_path):
+        try:
+            with open(default_path, "rb") as f:
+                content = f.read()
+                file_content = BytesIO(content)
+                file_content.name = DEFAULT_KPI_FILE # Attributo necessario per il parser
+                source_name = DEFAULT_KPI_FILE
+            st.toast(f"Modalità Demo: Caricato {DEFAULT_KPI_FILE}", icon="☁️")
+        except Exception as e:
+            st.error(f"Errore caricamento file default: {e}")
+
+# --- ELABORAZIONE PRINCIPALE ---
+if file_content:
+    # Parsing del file PRINCIPALE (upl_file O file_content)
+    df_raw, df_unique = enrich_data(parse_kpi_file(file_content))
     
     # --- CORREZIONE SESSIONI (Start from 1) ---
     df_raw = normalize_session_ids(df_raw)
-    # Dobbiamo aggiornare anche df_unique perché contiene session_id vecchi
-    # Il modo più sicuro è ricalcolare df_unique o mappare anche lui se ha la colonna
+    
+    # Aggiorniamo anche df_unique
     if 'session_id' in df_unique.columns:
         df_unique = normalize_session_ids(df_unique)
     
@@ -646,7 +710,7 @@ if upl_file:
         # 3. LAYOUT VISUALIZZAZIONE
         # ==========================================
         
-        st.subheader("🌍 Performance Globale (File Principale)")
+        st.subheader(f"🌍 Performance Globale ({source_name})")
         
         # --- RIGA 1: KPI PRINCIPALI (Con Delta) ---
         k1, k2, k3, k4, k5 = st.columns(5)
@@ -822,6 +886,7 @@ if upl_file:
         df_view = df_unique.drop_duplicates(subset=['filename'], keep='last').copy()
 
         # Dati JSON (BB e OCR) - Calcolati solo sulle immagini uniche
+        # USIAMO st.session_state.current_folder_path CHE ORA È GESTITO DALLA SIDEBAR
         if st.session_state.current_folder_path and os.path.isdir(st.session_state.current_folder_path):
             df_view[['real_bb', 'real_ocr']] = df_view['filename'].apply(
                 lambda x: pd.Series(get_json_stats(x, st.session_state.current_folder_path))
@@ -914,6 +979,7 @@ if upl_file:
                 row = df_view.loc[sel_idx]
                 file_name = row["filename"]
                 
+                # Usa il percorso deciso nella Sidebar (path_override)
                 img_path = load_image_smart(file_name, row["session_folder"], path_override, use_override)
                 
                 if img_path:
@@ -942,7 +1008,10 @@ if upl_file:
                     except Exception as e:
                         st.error(f"Errore visualizzazione: {e}")
                 else:
-                    st.warning(f"File non trovato: {file_name}")
+                    if st.session_state.current_folder_path == DEFAULT_FOLDER:
+                        st.warning(f"File non trovato nel Cloud: {file_name}")
+                    else:
+                        st.warning(f"File non trovato in locale. (Ricorda: su Cloud non puoi vedere file di C:)")
 
 # BOTTONE PDF NELLA SIDEBAR
     with st.sidebar:
