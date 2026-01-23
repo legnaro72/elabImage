@@ -567,75 +567,63 @@ with st.sidebar:
 # ==========================================================
 # MAIN
 # ==========================================================
-
-
 st.title("🧠 KPI Manager v3 – FINAL")
 
 pdf_figures = {}
-
-# --- COSTANTI CLOUD / DEFAULT ---
 DEFAULT_FOLDER = "AnnProva"
 DEFAULT_KPI_FILE = "KPIEsempio.kpi"
 
-# Variabili di stato per il file
-file_content = None
-source_name = ""
-
-# --- SIDEBAR: GESTIONE INPUT E PATH ---
+# --- 1. SIDEBAR: Definiamo qui la variabile upl_file ---
 with st.sidebar:
     st.markdown("## 📂 Sorgente Dati")
-
-    # 1. Caricamento File KPI (Sovrascrive il default)
-    upl_file = st.file_uploader("Carica File KPI (Opzionale)", type=["kpi", "txt", "kkk"])
+    
+    # Assegniamo un KEY univoco per evitare che Streamlit perda il file
+    upl_file = st.file_uploader(
+        "Carica File KPI (Opzionale)", 
+        type=["kpi", "txt", "kkk"], 
+        key="main_kpi_uploader"
+    )
 
     st.markdown("---")
     st.write("🖼️ **Sorgente Immagini & JSON**")
 
-    # 2. Scelta Modalità Percorso (Cloud vs Locale)
-    # Seleziona da dove l'app deve cercare le immagini
     path_mode = st.radio(
         "Dove sono le immagini?",
         ["Cloud (GitHub Repo)", "Locale (Il tuo PC)"],
         index=0
     )
 
+    # Gestione Path
     if path_mode == "Cloud (GitHub Repo)":
-        # Imposta il percorso fisso della repo
         st.session_state.current_folder_path = DEFAULT_FOLDER
         path_override = DEFAULT_FOLDER
         use_override = True
         st.info(f"📂 Cartella attiva: `{DEFAULT_FOLDER}/`")
     else:
-        # Permette all'utente di scrivere il percorso locale
-        # Recuperiamo il valore precedente se diverso dal default cloud
         curr_val = st.session_state.current_folder_path if st.session_state.current_folder_path != DEFAULT_FOLDER else ""
-        
         path_input = st.text_input("Inserisci Path locale (es. C:/Dati):", value=curr_val)
         st.session_state.current_folder_path = path_input
         path_override = path_input
         use_override = True
         
-        if path_input:
-            st.warning("⚠️ Nota: In 'Locale', le immagini nel Tab 4 si vedono solo se esegui l'app in locale (localhost).")
-
-    # 3. File di Confronto
     st.markdown("---")
-    st.write("⚖️ **Confronto (Opzionale)**")
-    uploaded_file_compare = st.file_uploader("Carica file per confronto", type=["kpi", "txt", "kkk"])
+    uploaded_file_compare = st.file_uploader("Carica file confronto (Opzionale)", type=["kpi", "txt", "kkk"])
 
-# --- LOGICA CARICAMENTO FILE (PRIORITÀ ALL'UTENTE) ---
+
+# --- 2. LOGICA DI CARICAMENTO (Priorità Assoluta al File Utente) ---
 file_content = None
+source_name = ""
 
-# 1. CASO FILE UTENTE: Priorità Assoluta
+# DEBUG: Se vedi questo messaggio, il file è stato ricevuto da Streamlit
 if upl_file is not None:
+    # CASO A: L'utente ha caricato un file
     file_content = upl_file
-    # FONDAMENTALE: Resettiamo il puntatore del file per sicurezza
-    file_content.seek(0)
+    file_content.seek(0) # Reset puntatore fondamentale
     source_name = upl_file.name
-    st.toast(f"✅ Usando il TUO file: {source_name}", icon="📂")
+    st.toast(f"✅ FILE RILEVATO: {source_name}", icon="📂")
 
-# 2. CASO DEMO: Solo se NON c'è file utente
 else:
+    # CASO B: Nessun file caricato -> Carico DEMO
     default_path = os.path.join(DEFAULT_FOLDER, DEFAULT_KPI_FILE)
     
     if os.path.exists(default_path):
@@ -643,76 +631,42 @@ else:
             with open(default_path, "rb") as f:
                 content = f.read()
                 file_content = BytesIO(content)
-                
-                # FIX PER LA CACHE (Evita l'errore getmtime)
+                # Fix per la cache di Streamlit
                 file_content.name = os.path.abspath(default_path)
-                
                 source_name = DEFAULT_KPI_FILE
-            st.toast(f"⚠️ Nessun file caricato. Modalità DEMO attiva.", icon="☁️")
+            
+            st.toast("⚠️ Nessun file caricato. Modalità DEMO attiva.", icon="☁️")
         except Exception as e:
             st.error(f"Errore caricamento Demo: {e}")
+    else:
+        st.warning(f"File demo non trovato in: {default_path}")
 
-# --- ELABORAZIONE DATI (Eseguita solo se abbiamo un contenuto) ---
+
+# --- 3. ELABORAZIONE (Parte rimasta invariata) ---
 if file_content:
-    # Parsing del file
+    # Parsing
     try:
-        # Passiamo il file al parser
         df_raw, df_unique = enrich_data(parse_kpi_file(file_content))
         
-        # --- CORREZIONE SESSIONI (Start from 1) ---
+        # Correzione sessioni
         df_raw = normalize_session_ids(df_raw)
         if 'session_id' in df_unique.columns:
             df_unique = normalize_session_ids(df_unique)
             
     except Exception as e:
-        st.error(f"Errore nella lettura del file KPI: {e}")
-        st.stop() # Ferma l'esecuzione se il file è corrotto
+        st.error(f"Errore lettura file: {e}")
+        st.stop()
 
-    # Parsing del file CONFRONTO (Se esiste)
+    # Parsing Confronto
     df_compare_raw = None
     df_compare_grouped = None
-    
     if uploaded_file_compare:
         try:
             df_compare_raw, df_compare_grouped = enrich_data(parse_kpi_file(uploaded_file_compare))
-            st.toast(f"Confronto attivo", icon="⚖️")
-        except Exception as e:
-            st.error(f"Errore nel file di confronto: {e}")
+        except:
+            pass
 
-    # --- INIZIO TABS ---
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Dashboard",
-        "📈 Analisi Efficienza",
-        "🕒 Timeline",
-        "👁️ Ispezione"
-    ])
-    
-    # ... (Il resto del codice dentro i tab rimane uguale) ...
-
-# --- ELABORAZIONE PRINCIPALE ---
-if file_content:
-    # Parsing del file PRINCIPALE (upl_file O file_content)
-    df_raw, df_unique = enrich_data(parse_kpi_file(file_content))
-    
-    # --- CORREZIONE SESSIONI (Start from 1) ---
-    df_raw = normalize_session_ids(df_raw)
-    
-    # Aggiorniamo anche df_unique
-    if 'session_id' in df_unique.columns:
-        df_unique = normalize_session_ids(df_unique)
-    
-    # Parsing del file CONFRONTO (Se esiste)
-    df_compare_raw = None
-    df_compare_grouped = None
-    
-    if uploaded_file_compare:
-        try:
-            # CORREZIONE: Prendiamo anche il _raw per contare i file unici globali!
-            df_compare_raw, df_compare_grouped = enrich_data(parse_kpi_file(uploaded_file_compare))
-            st.toast(f"File confronto caricato correttamente", icon="✅")
-        except Exception as e:
-            st.error(f"Errore nel file di confronto: {e}")
-
+    # --- TABS (Dashboard, etc.) ---
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Dashboard",
         "📈 Analisi Efficienza",
