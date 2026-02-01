@@ -1,3 +1,12 @@
+ANNOTAIMMAGINI Vers 7.0
+
+1. Migliorata finastra About/ChangeLog
+2. Inserito Manuale Utente . Pulsante in sezione "Controllo TARGA (OCR)"
+3. Inserito Log KPI
+4. Inserito pulsante chiusura applicativo
+4. Migliorato Versionamento codice
+
+
 ANNOTAIMMAGINI Vers 6.0
 
 1.Inserita la modalità di lavoro SMART (chiede e ricorda all'utente di salvare solo se ci sono state modifiche non salvate)
@@ -38,7 +47,3 @@ Nella attuale versione sono state fatte le seguenti varianti:
 1.Inseriti i tasti per about ed Help on-line -spostato pulsante cambia cartella prima della preview del nome dell immagine.
 2.Inserita la possibilità di filtrare una classe su una cartella questa funzionalità mostra solo le immagini che contengono quella specifica classe è possibile cambiare il filtro attraverso la combinazione di tasti Shitt + F
 3.Inserita la navigazione dei bounding box attraverso la barra spaziatrice che cicla su tutti i Bounding box appartenenti a una specifica classe (quella correntemente selezionata) nel caso in cui il filtro sia disabilitato mentre nel caso in cui il filtro è abilitato la pressione della barra spaziatrice cicla su tutti gli oggetti appartenenti alla classe filtrata
-
-
-
-
