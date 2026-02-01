@@ -1,0 +1,1 @@
+pyinstaller --noconfirm --onefile --windowed --icon="leonardo.ico" --name="Leonardo_Viewer_Portable" --clean --exclude-module torch --exclude-module pandas.tests --copy-metadata streamlit --copy-metadata plotly --copy-metadata pandas --collect-all streamlit --collect-all PIL --collect-all fpdf --add-data "viewerstatistiche3.py;." --additional-hooks-dir=. launcher.py
